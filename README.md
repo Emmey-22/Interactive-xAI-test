@@ -42,3 +42,30 @@ Run tests:
 ```bash
 pytest -q
 ```
+
+## Quick Deploy (Testing)
+
+### 1) Deploy Backend to Render
+
+1. In Render, choose **New +** -> **Blueprint**.
+2. Connect this GitHub repo and select branch `main`.
+3. Render will read `render.yaml` and create `interactive-xai-api`.
+4. In Render service environment variables, set:
+   - `CORS_ORIGINS=https://<your-frontend-domain>`
+5. Deploy and copy backend URL, for example:
+   - `https://interactive-xai-api.onrender.com`
+
+### 2) Deploy Frontend to Vercel
+
+1. Import the same repo in Vercel.
+2. Set **Root Directory** to `frontend`.
+3. Add environment variable:
+   - `VITE_API_BASE_URL=https://<your-render-backend-url>`
+4. Deploy.
+
+### 3) Verify
+
+1. Open frontend URL.
+2. Enter a `User ID`.
+3. Run **Predict Risk** then **Explain Drivers**.
+4. Confirm analytics cards are user-specific.

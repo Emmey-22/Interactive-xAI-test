@@ -1,3 +1,4 @@
+import os
 from fastapi import FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
 from .schemas import PatientInput, PredictResponse, ExplainResponse, FeedbackRequest, PreferenceRequest
@@ -17,12 +18,18 @@ from .xai import predict, explain
 app = FastAPI(title="Interactive XAI Screening API", version="1.0")
 
 # Allow browser clients (React/Vite) to make cross-origin API calls.
+# Use CORS_ORIGINS="https://your-frontend.vercel.app,https://another-origin"
+# in deployment environments.
+_origins_env = os.environ.get("CORS_ORIGINS", "").strip()
+_default_origins = [
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+]
+_cors_origins = [o.strip() for o in _origins_env.split(",") if o.strip()] if _origins_env else _default_origins
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-    ],
+    allow_origins=_cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
