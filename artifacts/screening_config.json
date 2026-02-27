@@ -1,0 +1,26 @@
+{
+  "screening_target_recall": 0.85,
+  "screening_threshold": 0.09621914150914936,
+  "threshold_mode": "recall_target",
+  "val_roc_auc": 0.6296689590075513,
+  "val_pr_auc": 0.22228882238680342,
+  "test_roc_auc": 0.637750536382357,
+  "test_pr_auc": 0.23817074797169882,
+  "features": [
+    "male",
+    "age",
+    "education",
+    "currentSmoker",
+    "cigsPerDay",
+    "BPMeds",
+    "prevalentStroke",
+    "prevalentHyp",
+    "diabetes",
+    "totChol",
+    "sysBP",
+    "diaBP",
+    "BMI",
+    "heartRate",
+    "glucose"
+  ]
+}

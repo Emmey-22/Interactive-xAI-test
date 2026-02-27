@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+
+# App/runtime artifacts
+feedback.db
+*.log
+shap_outputs/
+unused_code/
+framingham_xgb_artifacts/
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.env
+
+# OS/editor
+.DS_Store
+Thumbs.db
+.vscode/
+
+# Local captures
+*.png
+*.mp4
