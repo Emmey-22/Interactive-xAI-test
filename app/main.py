@@ -21,6 +21,7 @@ app = FastAPI(title="Interactive XAI Screening API", version="1.0")
 # Use CORS_ORIGINS="https://your-frontend.vercel.app,https://another-origin"
 # in deployment environments.
 _origins_env = os.environ.get("CORS_ORIGINS", "").strip()
+_origin_regex = os.environ.get("CORS_ORIGIN_REGEX", "").strip()
 _default_origins = [
     "http://localhost:5173",
     "http://127.0.0.1:5173",
@@ -30,6 +31,7 @@ _cors_origins = [o.strip() for o in _origins_env.split(",") if o.strip()] if _or
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_cors_origins,
+    allow_origin_regex=_origin_regex or None,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

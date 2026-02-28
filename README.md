@@ -52,6 +52,7 @@ pytest -q
 3. Render will read `render.yaml` and create `interactive-xai-api`.
 4. In Render service environment variables, set:
    - `CORS_ORIGINS=https://<your-frontend-domain>`
+   - Optional for Vercel preview URLs: `CORS_ORIGIN_REGEX=^https://.*\\.vercel\\.app$`
 5. Deploy and copy backend URL, for example:
    - `https://interactive-xai-api.onrender.com`
 
