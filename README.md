@@ -11,6 +11,20 @@ python -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 API docs:
 - `http://127.0.0.1:8000/docs`
 
+Auth configuration (required for API calls except `/`):
+
+```bash
+# format: token:user_id[,token2:user2]
+export AUTH_TOKENS="dev-token:dev_user"
+```
+
+Then use `Authorization: Bearer <token>` from the frontend/API client.
+
+Validation notes:
+- `preferences.top_k` must be between `1` and `10`.
+- `preferences.style` must be `simple` or `detailed`.
+- Feature-level feedback (`relevant`, `irrelevant`, `confusing`) requires `feature_name` that matches a model feature.
+
 ## Frontend (React)
 
 Run from `frontend/`:
@@ -70,3 +84,9 @@ pytest -q
 2. Enter a `User ID`.
 3. Run **Predict Risk** then **Explain Drivers**.
 4. Confirm analytics cards are user-specific.
+
+
+## Phase 4 explainability notes
+- Explanations are SHAP attributions from the base XGBoost model.
+- Displayed risk is produced by a calibrated model (`xgb_calibrated_screening`).
+- The API now returns `meta.uncertainty_label` and `meta.top_k_semantics` to improve interpretation at the UI layer.

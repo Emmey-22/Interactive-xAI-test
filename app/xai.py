@@ -19,6 +19,7 @@ with open(os.path.join(ART_DIR, "screening_config.json"), "r") as f:
 
 _THRESHOLD = float(_cfg["screening_threshold"])
 _FEATURES = list(_cfg["features"])
+FEATURES = tuple(_FEATURES)
 
 # Optional background for faster/steadier SHAP
 _bg_path = os.path.join(ART_DIR, "shap_outputs", "shap_background_200.joblib")
@@ -57,6 +58,15 @@ def _pack(df):
         {"feature": r["feature"], "value": r["value"], "shap": float(r["shap"])}
         for _, r in df.iterrows()
     ]
+
+def _risk_uncertainty_label(risk: float, threshold: float) -> str:
+    margin = abs(float(risk) - float(threshold))
+    if margin < 0.03:
+        return "higher_uncertainty_near_threshold"
+    if margin < 0.08:
+        return "moderate_uncertainty"
+    return "lower_uncertainty"
+
 
 def predict(patient_dict):
     x = _to_df(patient_dict)
@@ -119,6 +129,11 @@ def explain(patient_dict, user_id=None):
         "mode": "screening",
         "style": prefs.get("style", "simple"),
         "note": "Screening mode prioritizes sensitivity; false positives are expected.",
+        "attribution_model": "xgb_base_model",
+        "risk_model": "xgb_calibrated_screening",
+        "attribution_scope": "Attributions are computed from the base model while displayed risk uses calibrated probabilities.",
+        "uncertainty_label": _risk_uncertainty_label(risk, thr),
+        "top_k_semantics": "top_k applies separately to positive and negative contributors.",
         "clarifications": clarifications,
         "disclaimer": "This tool is for screening support only and does not provide a medical diagnosis. Consult a qualified clinician for decisions."
     }

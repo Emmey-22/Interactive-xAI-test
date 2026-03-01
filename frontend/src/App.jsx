@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import {
   explainPatient,
   getAnalyticsSummary,
+  getCurrentUser,
   getPreferences,
   getTopFeatures,
   predictPatient,
@@ -46,17 +47,43 @@ const FIELD_META = {
 };
 
 const FIELD_ORDER = Object.keys(FIELD_META);
+const FEATURE_OPTIONS = FIELD_ORDER;
+
+const FEEDBACK_LABELS = {
+  irrelevant: "This feature seems irrelevant",
+  confusing: "This feature is confusing",
+  prefer_short: "Prefer shorter explanations",
+  prefer_long: "Prefer detailed explanations",
+  relevant: "This feature is relevant"
+};
 
 function formatRisk(v) {
   if (typeof v !== "number") return "-";
   return `${(v * 100).toFixed(2)}%`;
 }
 
-function riskTone(risk) {
+function riskTone(risk, threshold) {
   if (typeof risk !== "number") return "neutral";
-  if (risk >= 0.5) return "high";
-  if (risk >= 0.2) return "medium";
+  if (typeof threshold !== "number") return "neutral";
+  if (risk >= threshold * 2) return "high";
+  if (risk >= threshold) return "medium";
   return "low";
+}
+
+function screeningStatusLabel(risk, threshold) {
+  if (typeof risk !== "number" || typeof threshold !== "number") return "-";
+  return risk >= threshold ? "Flagged for follow-up" : "Not flagged";
+}
+
+function feedbackTypeLabel(feedbackType) {
+  return FEEDBACK_LABELS[feedbackType] || feedbackType;
+}
+
+function uncertaintyLabelText(label) {
+  if (label === "higher_uncertainty_near_threshold") return "Higher uncertainty: risk is close to screening threshold.";
+  if (label === "moderate_uncertainty") return "Moderate uncertainty: interpret with supporting context.";
+  if (label === "lower_uncertainty") return "Lower uncertainty for threshold decision.";
+  return "-";
 }
 
 function AlertModal({ open, title, message, onClose }) {
@@ -103,7 +130,8 @@ function FeatureTable({ title, items }) {
 }
 
 export default function App() {
-  const [userId, setUserId] = useState("");
+  const [authToken, setAuthToken] = useState("");
+  const [sessionUser, setSessionUser] = useState("");
   const [patient, setPatient] = useState(INITIAL_PATIENT);
   const [feedbackType, setFeedbackType] = useState("irrelevant");
   const [feedbackFeature, setFeedbackFeature] = useState("sysBP");
@@ -126,9 +154,10 @@ export default function App() {
 
   const explainRisk = useMemo(() => formatRisk(explainOut?.risk), [explainOut]);
   const predictRisk = useMemo(() => formatRisk(predictOut?.risk), [predictOut]);
-  const tone = riskTone(explainOut?.risk ?? predictOut?.risk);
-  const hasSession = userId.trim().length > 0;
-  const hasCaseContext = Boolean(predictOut || explainOut);
+  const hasSession = authToken.trim().length > 0;
+  const currentRisk = explainOut?.risk ?? predictOut?.risk;
+  const currentThreshold = explainOut?.threshold ?? predictOut?.threshold;
+  const tone = riskTone(currentRisk, currentThreshold);
 
   function updateField(name, value) {
     setPatient((prev) => ({ ...prev, [name]: value }));
@@ -170,7 +199,7 @@ export default function App() {
 
   async function runPredict() {
     if (!hasSession) {
-      openAlert("User ID Required", "Enter a User ID before running prediction.");
+      openAlert("Auth Token Required", "Enter an auth token before running prediction.");
       return;
     }
     const issues = validatePatientInput();
@@ -183,7 +212,7 @@ export default function App() {
     setError("");
     setNotice("");
     try {
-      const data = await predictPatient(patient, userId);
+      const data = await predictPatient(patient, authToken);
       setPredictOut(data);
       setNotice("Prediction completed.");
     } catch (e) {
@@ -196,7 +225,7 @@ export default function App() {
 
   async function runExplain() {
     if (!hasSession) {
-      openAlert("User ID Required", "Enter a User ID before generating explanation.");
+      openAlert("Auth Token Required", "Enter an auth token before generating explanation.");
       return;
     }
     const issues = validatePatientInput();
@@ -209,7 +238,7 @@ export default function App() {
     setError("");
     setNotice("");
     try {
-      const data = await explainPatient(patient, userId);
+      const data = await explainPatient(patient, authToken);
       setExplainOut(data);
       setNotice("Explanation generated.");
     } catch (e) {
@@ -222,7 +251,7 @@ export default function App() {
 
   async function saveFeedback() {
     if (!hasSession) {
-      openAlert("User ID Required", "Enter a User ID before saving feedback.");
+      openAlert("Auth Token Required", "Enter an auth token before saving feedback.");
       return;
     }
     setBusyLabel("Saving feedback...");
@@ -230,12 +259,15 @@ export default function App() {
     setError("");
     setNotice("");
     try {
-      await submitFeedback({
-        userId,
-        feedbackType,
-        featureName: feedbackFeature,
-        message: feedbackMessage
-      });
+      await submitFeedback(
+        {
+          feedbackType,
+          featureName: feedbackFeature,
+          message: feedbackMessage
+        },
+        authToken
+      );
+      await loadCurrentUser();
       await loadPreferences();
       await loadAnalytics();
       setNotice("Feedback saved and profile refreshed.");
@@ -247,14 +279,19 @@ export default function App() {
     }
   }
 
+  async function loadCurrentUser() {
+    const data = await getCurrentUser(authToken);
+    setSessionUser(data.user_id || "");
+  }
+
   async function loadPreferences() {
-    const data = await getPreferences(userId);
+    const data = await getPreferences(authToken);
     setPrefsOut(data);
   }
 
   async function savePreferences() {
     if (!hasSession) {
-      openAlert("User ID Required", "Enter a User ID before saving preferences.");
+      openAlert("Auth Token Required", "Enter an auth token before saving preferences.");
       return;
     }
     setBusyLabel("Saving preferences...");
@@ -263,10 +300,10 @@ export default function App() {
     setNotice("");
     try {
       await setPreferences({
-        userId,
         topK: Number(prefsOut?.top_k || 8),
         style: prefsOut?.style || "simple"
-      });
+      }, authToken);
+      await loadCurrentUser();
       await loadPreferences();
       setNotice("Preferences updated.");
     } catch (e) {
@@ -284,8 +321,8 @@ export default function App() {
       return;
     }
     const [summary, top] = await Promise.all([
-      getAnalyticsSummary(userId),
-      getTopFeatures({ feedbackType: "irrelevant", limit: 5, userId })
+      getAnalyticsSummary(authToken),
+      getTopFeatures({ feedbackType: "irrelevant", limit: 5 }, authToken)
     ]);
     setAnalyticsOut(summary);
     setTopFeaturesOut(top.top_features || []);
@@ -293,7 +330,7 @@ export default function App() {
 
   async function refreshAll() {
     if (!hasSession) {
-      openAlert("User ID Required", "Enter a User ID before refreshing profile.");
+      openAlert("Auth Token Required", "Enter an auth token before refreshing profile.");
       return;
     }
     setBusyLabel("Refreshing profile...");
@@ -301,8 +338,8 @@ export default function App() {
     setError("");
     setNotice("");
     try {
-      await Promise.all([loadPreferences(), loadAnalytics()]);
-      setNotice("Preferences and analytics refreshed.");
+      await Promise.all([loadCurrentUser(), loadPreferences(), loadAnalytics()]);
+      setNotice("Session, preferences, and analytics refreshed.");
     } catch (e) {
       setError(e.message);
     } finally {
@@ -339,8 +376,17 @@ export default function App() {
         <div className="command-group">
           <h3>Session Identity</h3>
           <label>
-            User ID
-            <input value={userId} onChange={(e) => setUserId(e.target.value)} />
+            Auth Token
+            <input
+              type="password"
+              value={authToken}
+              onChange={(e) => setAuthToken(e.target.value)}
+              placeholder="Enter bearer token"
+            />
+          </label>
+          <label>
+            Authenticated User
+            <input value={sessionUser} readOnly placeholder="No active session" />
           </label>
           <div className="actions">
             <button className="button-ghost" onClick={refreshAll} disabled={loading}>
@@ -396,16 +442,22 @@ export default function App() {
               <label>
                 feedback_type
                 <select value={feedbackType} onChange={(e) => setFeedbackType(e.target.value)}>
-                  <option value="irrelevant">irrelevant</option>
-                  <option value="confusing">confusing</option>
-                  <option value="prefer_short">prefer_short</option>
-                  <option value="prefer_long">prefer_long</option>
-                  <option value="relevant">relevant</option>
+                  <option value="irrelevant">{FEEDBACK_LABELS.irrelevant}</option>
+                  <option value="confusing">{FEEDBACK_LABELS.confusing}</option>
+                  <option value="prefer_short">{FEEDBACK_LABELS.prefer_short}</option>
+                  <option value="prefer_long">{FEEDBACK_LABELS.prefer_long}</option>
+                  <option value="relevant">{FEEDBACK_LABELS.relevant}</option>
                 </select>
               </label>
               <label>
                 feature_name
-                <input value={feedbackFeature} onChange={(e) => setFeedbackFeature(e.target.value)} />
+                <select value={feedbackFeature} onChange={(e) => setFeedbackFeature(e.target.value)}>
+                  {FEATURE_OPTIONS.map((feature) => (
+                    <option key={feature} value={feature}>
+                      {feature}
+                    </option>
+                  ))}
+                </select>
               </label>
               <label>
                 message
@@ -424,6 +476,9 @@ export default function App() {
                 top_k
                 <input
                   type="number"
+                  min={1}
+                  max={10}
+                  step={1}
                   value={prefsOut?.top_k ?? 8}
                   onChange={(e) =>
                     setPrefsOut((prev) => ({ ...(prev || {}), top_k: Number(e.target.value) }))
@@ -452,14 +507,14 @@ export default function App() {
         <section className="stack">
           <section className={`insight-hero tone-${tone}`}>
             <div className="risk-ring" aria-hidden="true">
-              <div className="risk-ring-inner">{predictRisk}</div>
+              <div className="risk-ring-inner">{formatRisk(currentRisk)}</div>
             </div>
             <div>
               <h2>Risk Command Center</h2>
               <p>{loading ? busyLabel || "Processing..." : notice || "Model ready for next case."}</p>
               <p className="muted">
-                Threshold: {predictOut ? predictOut.threshold.toFixed(4) : "-"} | Status:{" "}
-                {predictOut ? (predictOut.flagged ? "Flagged" : "Not Flagged") : "-"}
+                Screening threshold: {typeof currentThreshold === "number" ? currentThreshold.toFixed(4) : "-"} |
+                Screening status: {screeningStatusLabel(currentRisk, currentThreshold)}
               </p>
               {error && <p className="error">{error}</p>}
             </div>
@@ -474,8 +529,7 @@ export default function App() {
                   Risk: <strong>{predictRisk}</strong>
                 </p>
                 <p>
-                  Status:{" "}
-                  <strong>{predictOut ? (predictOut.flagged ? "Flagged" : "Not Flagged") : "-"}</strong>
+                  Screening status: <strong>{screeningStatusLabel(predictOut?.risk, predictOut?.threshold)}</strong>
                 </p>
               </div>
               <div className="result-card">
@@ -484,7 +538,7 @@ export default function App() {
                   Risk: <strong>{explainRisk}</strong>
                 </p>
                 <p>
-                  Flagged: <strong>{explainOut ? String(explainOut.flagged) : "-"}</strong>
+                  Screening status: <strong>{screeningStatusLabel(explainOut?.risk, explainOut?.threshold)}</strong>
                 </p>
                 <p>
                   Disputed: <strong>{explainOut?.disputed_features?.join(", ") || "-"}</strong>
@@ -492,13 +546,13 @@ export default function App() {
               </div>
               <div className="result-card">
                 <h3>Analytics Summary</h3>
-                {!hasCaseContext ? (
-                  <p className="muted">Run Predict or Explain first.</p>
+                {!hasSession ? (
+                  <p className="muted">Enter a token and refresh profile.</p>
                 ) : analyticsOut?.summary?.length ? (
                   <ul className="summary-list">
                     {analyticsOut.summary.map((s) => (
                       <li key={s.feedback_type}>
-                        <span>{s.feedback_type}</span>
+                        <span>{feedbackTypeLabel(s.feedback_type)}</span>
                         <strong>{s.count}</strong>
                       </li>
                     ))}
@@ -509,8 +563,8 @@ export default function App() {
               </div>
               <div className="result-card">
                 <h3>Top Irrelevant Features</h3>
-                {!hasCaseContext ? (
-                  <p className="muted">Run Predict or Explain first.</p>
+                {!hasSession ? (
+                  <p className="muted">Enter a token and refresh profile.</p>
                 ) : topFeaturesOut.length ? (
                   <ul className="summary-list">
                     {topFeaturesOut.map((f) => (
@@ -533,6 +587,20 @@ export default function App() {
               <FeatureTable title="Top Positive Contributors" items={explainOut?.top_positive || []} />
               <FeatureTable title="Top Negative Contributors" items={explainOut?.top_negative || []} />
               <FeatureTable title="Hidden Contributors (Disputed)" items={explainOut?.hidden_contributors || []} />
+              <div className="result-card">
+                <h3>Explanation Method</h3>
+                <p>
+                  Attribution model: <strong>{explainOut?.meta?.attribution_model || "-"}</strong>
+                </p>
+                <p>
+                  Risk model: <strong>{explainOut?.meta?.risk_model || "-"}</strong>
+                </p>
+                <p className="muted">{explainOut?.meta?.attribution_scope || "-"}</p>
+                <p>
+                  Uncertainty: <strong>{uncertaintyLabelText(explainOut?.meta?.uncertainty_label)}</strong>
+                </p>
+                <p className="muted">{explainOut?.meta?.top_k_semantics || "-"}</p>
+              </div>
               <div className="result-card">
                 <h3>Clarifications</h3>
                 {explainOut?.meta?.clarifications?.length ? (

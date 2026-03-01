@@ -28,9 +28,17 @@ function normalizePatientPayload(form) {
   return payload;
 }
 
-async function apiFetch(path, options = {}) {
+function authHeaders(authToken) {
+  return authToken ? { Authorization: `Bearer ${authToken}` } : {};
+}
+
+async function apiFetch(path, options = {}, authToken = "") {
   const res = await fetch(`${API_BASE}${path}`, {
-    headers: { "Content-Type": "application/json", ...(options.headers || {}) },
+    headers: {
+      "Content-Type": "application/json",
+      ...authHeaders(authToken),
+      ...(options.headers || {})
+    },
     ...options
   });
   if (!res.ok) {
@@ -40,62 +48,82 @@ async function apiFetch(path, options = {}) {
   return res.json();
 }
 
-export function predictPatient(patientForm, userId) {
-  return apiFetch(`/predict?user_id=${encodeURIComponent(userId)}`, {
-    method: "POST",
-    body: JSON.stringify(normalizePatientPayload(patientForm))
-  });
+export function getCurrentUser(authToken) {
+  return apiFetch("/auth/me", {}, authToken);
 }
 
-export function explainPatient(patientForm, userId) {
-  return apiFetch(`/explain?user_id=${encodeURIComponent(userId)}`, {
-    method: "POST",
-    body: JSON.stringify(normalizePatientPayload(patientForm))
-  });
-}
-
-export function submitFeedback({
-  userId,
-  feedbackType,
-  featureName,
-  caseId = "frontend_case",
-  message
-}) {
-  return apiFetch("/feedback", {
-    method: "POST",
-    body: JSON.stringify({
-      user_id: userId,
-      feedback_type: feedbackType,
-      feature_name: featureName || null,
-      case_id: caseId,
-      message: message || null
-    })
-  });
-}
-
-export function getPreferences(userId) {
-  return apiFetch(`/preferences?user_id=${encodeURIComponent(userId)}`);
-}
-
-export function setPreferences({ userId, topK, style }) {
-  return apiFetch("/preferences", {
-    method: "POST",
-    body: JSON.stringify({
-      user_id: userId,
-      top_k: Number(topK || 8),
-      style: style || "simple"
-    })
-  });
-}
-
-export function getAnalyticsSummary(userId) {
-  return apiFetch(`/analytics/summary?user_id=${encodeURIComponent(userId)}`);
-}
-
-export function getTopFeatures({ feedbackType, limit = 10, userId }) {
+export function predictPatient(patientForm, authToken) {
   return apiFetch(
-    `/analytics/top_features?feedback_type=${encodeURIComponent(feedbackType)}&limit=${Number(
-      limit
-    )}&user_id=${encodeURIComponent(userId)}`
+    "/predict",
+    {
+      method: "POST",
+      body: JSON.stringify(normalizePatientPayload(patientForm))
+    },
+    authToken
+  );
+}
+
+export function explainPatient(patientForm, authToken) {
+  return apiFetch(
+    "/explain",
+    {
+      method: "POST",
+      body: JSON.stringify(normalizePatientPayload(patientForm))
+    },
+    authToken
+  );
+}
+
+export function submitFeedback(
+  {
+    feedbackType,
+    featureName,
+    caseId = "frontend_case",
+    message
+  },
+  authToken
+) {
+  return apiFetch(
+    "/feedback",
+    {
+      method: "POST",
+      body: JSON.stringify({
+        feedback_type: feedbackType,
+        feature_name: featureName || null,
+        case_id: caseId,
+        message: message || null
+      })
+    },
+    authToken
+  );
+}
+
+export function getPreferences(authToken) {
+  return apiFetch("/preferences", {}, authToken);
+}
+
+export function setPreferences({ topK, style }, authToken) {
+  return apiFetch(
+    "/preferences",
+    {
+      method: "POST",
+      body: JSON.stringify({
+        top_k: Number(topK || 8),
+        style: style || "simple"
+      })
+    },
+    authToken
+  );
+}
+
+export function getAnalyticsSummary(authToken) {
+  return apiFetch("/analytics/summary", {}, authToken);
+}
+
+export function getTopFeatures({ feedbackType, limit = 10 }, authToken) {
+  return apiFetch(
+    `/analytics/top_features?feedback_type=${encodeURIComponent(feedbackType)}&limit=${Number(limit)}`,
+    {},
+    authToken
   );
 }
