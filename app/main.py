@@ -24,6 +24,7 @@ _origins_env = os.environ.get("CORS_ORIGINS", "").strip()
 _default_origins = [
     "http://localhost:5173",
     "http://127.0.0.1:5173",
+    "https://interactive-x-ai-test.vercel.app",
 ]
 _cors_origins = [o.strip() for o in _origins_env.split(",") if o.strip()] if _origins_env else _default_origins
 
