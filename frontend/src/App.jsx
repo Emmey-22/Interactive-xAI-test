@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import {
   explainPatient,
   getAnalyticsSummary,
+  getCurrentUser,
   getPreferences,
   getTopFeatures,
   predictPatient,
@@ -103,7 +104,8 @@ function FeatureTable({ title, items }) {
 }
 
 export default function App() {
-  const [userId, setUserId] = useState("");
+  const [authToken, setAuthToken] = useState("");
+  const [sessionUser, setSessionUser] = useState("");
   const [patient, setPatient] = useState(INITIAL_PATIENT);
   const [feedbackType, setFeedbackType] = useState("irrelevant");
   const [feedbackFeature, setFeedbackFeature] = useState("sysBP");
@@ -127,7 +129,7 @@ export default function App() {
   const explainRisk = useMemo(() => formatRisk(explainOut?.risk), [explainOut]);
   const predictRisk = useMemo(() => formatRisk(predictOut?.risk), [predictOut]);
   const tone = riskTone(explainOut?.risk ?? predictOut?.risk);
-  const hasSession = userId.trim().length > 0;
+  const hasSession = authToken.trim().length > 0;
   const hasCaseContext = Boolean(predictOut || explainOut);
 
   function updateField(name, value) {
@@ -170,7 +172,7 @@ export default function App() {
 
   async function runPredict() {
     if (!hasSession) {
-      openAlert("User ID Required", "Enter a User ID before running prediction.");
+      openAlert("Auth Token Required", "Enter an auth token before running prediction.");
       return;
     }
     const issues = validatePatientInput();
@@ -183,7 +185,7 @@ export default function App() {
     setError("");
     setNotice("");
     try {
-      const data = await predictPatient(patient, userId);
+      const data = await predictPatient(patient, authToken);
       setPredictOut(data);
       setNotice("Prediction completed.");
     } catch (e) {
@@ -196,7 +198,7 @@ export default function App() {
 
   async function runExplain() {
     if (!hasSession) {
-      openAlert("User ID Required", "Enter a User ID before generating explanation.");
+      openAlert("Auth Token Required", "Enter an auth token before generating explanation.");
       return;
     }
     const issues = validatePatientInput();
@@ -209,7 +211,7 @@ export default function App() {
     setError("");
     setNotice("");
     try {
-      const data = await explainPatient(patient, userId);
+      const data = await explainPatient(patient, authToken);
       setExplainOut(data);
       setNotice("Explanation generated.");
     } catch (e) {
@@ -222,7 +224,7 @@ export default function App() {
 
   async function saveFeedback() {
     if (!hasSession) {
-      openAlert("User ID Required", "Enter a User ID before saving feedback.");
+      openAlert("Auth Token Required", "Enter an auth token before saving feedback.");
       return;
     }
     setBusyLabel("Saving feedback...");
@@ -230,12 +232,15 @@ export default function App() {
     setError("");
     setNotice("");
     try {
-      await submitFeedback({
-        userId,
-        feedbackType,
-        featureName: feedbackFeature,
-        message: feedbackMessage
-      });
+      await submitFeedback(
+        {
+          feedbackType,
+          featureName: feedbackFeature,
+          message: feedbackMessage
+        },
+        authToken
+      );
+      await loadCurrentUser();
       await loadPreferences();
       await loadAnalytics();
       setNotice("Feedback saved and profile refreshed.");
@@ -247,14 +252,19 @@ export default function App() {
     }
   }
 
+  async function loadCurrentUser() {
+    const data = await getCurrentUser(authToken);
+    setSessionUser(data.user_id || "");
+  }
+
   async function loadPreferences() {
-    const data = await getPreferences(userId);
+    const data = await getPreferences(authToken);
     setPrefsOut(data);
   }
 
   async function savePreferences() {
     if (!hasSession) {
-      openAlert("User ID Required", "Enter a User ID before saving preferences.");
+      openAlert("Auth Token Required", "Enter an auth token before saving preferences.");
       return;
     }
     setBusyLabel("Saving preferences...");
@@ -263,10 +273,10 @@ export default function App() {
     setNotice("");
     try {
       await setPreferences({
-        userId,
         topK: Number(prefsOut?.top_k || 8),
         style: prefsOut?.style || "simple"
-      });
+      }, authToken);
+      await loadCurrentUser();
       await loadPreferences();
       setNotice("Preferences updated.");
     } catch (e) {
@@ -284,8 +294,8 @@ export default function App() {
       return;
     }
     const [summary, top] = await Promise.all([
-      getAnalyticsSummary(userId),
-      getTopFeatures({ feedbackType: "irrelevant", limit: 5, userId })
+      getAnalyticsSummary(authToken),
+      getTopFeatures({ feedbackType: "irrelevant", limit: 5 }, authToken)
     ]);
     setAnalyticsOut(summary);
     setTopFeaturesOut(top.top_features || []);
@@ -293,7 +303,7 @@ export default function App() {
 
   async function refreshAll() {
     if (!hasSession) {
-      openAlert("User ID Required", "Enter a User ID before refreshing profile.");
+      openAlert("Auth Token Required", "Enter an auth token before refreshing profile.");
       return;
     }
     setBusyLabel("Refreshing profile...");
@@ -301,8 +311,8 @@ export default function App() {
     setError("");
     setNotice("");
     try {
-      await Promise.all([loadPreferences(), loadAnalytics()]);
-      setNotice("Preferences and analytics refreshed.");
+      await Promise.all([loadCurrentUser(), loadPreferences(), loadAnalytics()]);
+      setNotice("Session, preferences, and analytics refreshed.");
     } catch (e) {
       setError(e.message);
     } finally {
@@ -339,8 +349,17 @@ export default function App() {
         <div className="command-group">
           <h3>Session Identity</h3>
           <label>
-            User ID
-            <input value={userId} onChange={(e) => setUserId(e.target.value)} />
+            Auth Token
+            <input
+              type="password"
+              value={authToken}
+              onChange={(e) => setAuthToken(e.target.value)}
+              placeholder="Enter bearer token"
+            />
+          </label>
+          <label>
+            Authenticated User
+            <input value={sessionUser} readOnly placeholder="No active session" />
           </label>
           <div className="actions">
             <button className="button-ghost" onClick={refreshAll} disabled={loading}>

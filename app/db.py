@@ -44,6 +44,17 @@ def init_db():
     )
     """)
 
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS audit_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id TEXT NOT NULL,
+        action TEXT NOT NULL,
+        outcome TEXT NOT NULL,
+        details TEXT,
+        created_at TEXT NOT NULL
+    )
+    """)
+
     conn.commit()
     conn.close()
 
@@ -203,3 +214,15 @@ def top_features_by_feedback(feedback_type: str, limit: int = 10, user_id: str =
     rows = cur.fetchall()
     conn.close()
     return [{"feature": r["feature_name"], "count": int(r["n"])} for r in rows]
+
+
+def log_audit_event(user_id: str, action: str, outcome: str = "ok", details: Optional[str] = None):
+    conn = get_conn()
+    cur = conn.cursor()
+    now = datetime.utcnow().isoformat()
+    cur.execute("""
+    INSERT INTO audit_events(user_id, action, outcome, details, created_at)
+    VALUES(?, ?, ?, ?, ?)
+    """, (user_id, action, outcome, details, now))
+    conn.commit()
+    conn.close()

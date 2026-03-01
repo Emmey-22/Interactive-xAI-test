@@ -8,6 +8,9 @@ import app.db as db_module
 from app.main import app
 
 
+AUTH_HEADERS = {"Authorization": "Bearer dev-token"}
+
+
 def sample_patient():
     return {
         "male": 1,
@@ -45,8 +48,19 @@ def test_home_endpoint(client):
     assert "/predict" in body["endpoints"]
 
 
+def test_auth_me(client):
+    resp = client.get("/auth/me", headers=AUTH_HEADERS)
+    assert resp.status_code == 200
+    assert resp.json()["user_id"] == "dev_user"
+
+
+def test_auth_required(client):
+    resp = client.get("/preferences")
+    assert resp.status_code == 401
+
+
 def test_predict_endpoint(client):
-    resp = client.post("/predict?user_id=test_user", json=sample_patient())
+    resp = client.post("/predict", json=sample_patient(), headers=AUTH_HEADERS)
     assert resp.status_code == 200
     body = resp.json()
     assert 0.0 <= body["risk"] <= 1.0
@@ -55,7 +69,7 @@ def test_predict_endpoint(client):
 
 
 def test_explain_endpoint(client):
-    resp = client.post("/explain?user_id=test_user", json=sample_patient())
+    resp = client.post("/explain", json=sample_patient(), headers=AUTH_HEADERS)
     assert resp.status_code == 200
     body = resp.json()
     assert set(
@@ -78,15 +92,15 @@ def test_feedback_prefer_short_updates_preferences(client):
     resp = client.post(
         "/feedback",
         json={
-            "user_id": "pref_user",
             "feedback_type": "prefer_short",
             "feature_name": "sysBP",
             "case_id": "case_1",
             "message": "keep it short",
         },
+        headers=AUTH_HEADERS,
     )
     assert resp.status_code == 200
-    pref_resp = client.get("/preferences?user_id=pref_user")
+    pref_resp = client.get("/preferences", headers=AUTH_HEADERS)
     assert pref_resp.status_code == 200
     prefs = pref_resp.json()
     assert prefs["top_k"] == 3
@@ -96,33 +110,30 @@ def test_feedback_prefer_short_updates_preferences(client):
 def test_preferences_set_and_get(client):
     post_resp = client.post(
         "/preferences",
-        json={"user_id": "manual_pref_user", "top_k": 9, "style": "detailed"},
+        json={"top_k": 9, "style": "detailed"},
+        headers=AUTH_HEADERS,
     )
     assert post_resp.status_code == 200
-    get_resp = client.get("/preferences?user_id=manual_pref_user")
+    get_resp = client.get("/preferences", headers=AUTH_HEADERS)
     assert get_resp.status_code == 200
     assert get_resp.json() == {"top_k": 9, "style": "detailed"}
 
 
 def test_analytics_endpoints(client):
-    user_id = "analytics_user"
     events = [
         {
-            "user_id": user_id,
             "feedback_type": "irrelevant",
             "feature_name": "sysBP",
             "case_id": "c1",
             "message": None,
         },
         {
-            "user_id": user_id,
             "feedback_type": "irrelevant",
             "feature_name": "sysBP",
             "case_id": "c2",
             "message": None,
         },
         {
-            "user_id": user_id,
             "feedback_type": "confusing",
             "feature_name": "totChol",
             "case_id": "c3",
@@ -130,17 +141,18 @@ def test_analytics_endpoints(client):
         },
     ]
     for event in events:
-        resp = client.post("/feedback", json=event)
+        resp = client.post("/feedback", json=event, headers=AUTH_HEADERS)
         assert resp.status_code == 200
 
-    summary_resp = client.get(f"/analytics/summary?user_id={user_id}")
+    summary_resp = client.get("/analytics/summary", headers=AUTH_HEADERS)
     assert summary_resp.status_code == 200
     summary = summary_resp.json()["summary"]
     assert any(row["feedback_type"] == "irrelevant" for row in summary)
     assert any(row["feedback_type"] == "confusing" for row in summary)
 
     top_resp = client.get(
-        f"/analytics/top_features?feedback_type=irrelevant&limit=5&user_id={user_id}"
+        "/analytics/top_features?feedback_type=irrelevant&limit=5",
+        headers=AUTH_HEADERS,
     )
     assert top_resp.status_code == 200
     payload = top_resp.json()

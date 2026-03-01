@@ -11,6 +11,15 @@ python -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 API docs:
 - `http://127.0.0.1:8000/docs`
 
+Auth configuration (required for API calls except `/`):
+
+```bash
+# format: token:user_id[,token2:user2]
+export AUTH_TOKENS="dev-token:dev_user"
+```
+
+Then use `Authorization: Bearer <token>` from the frontend/API client.
+
 ## Frontend (React)
 
 Run from `frontend/`:
