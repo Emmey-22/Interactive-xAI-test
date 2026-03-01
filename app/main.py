@@ -1,24 +1,32 @@
 import os
-from fastapi import FastAPI, Query, Depends
+from typing import Literal
+
+from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 
-from .schemas import PatientInput, PredictResponse, ExplainResponse, FeedbackRequest, PreferenceRequest
 from .db import (
-    init_db,
-    insert_feedback,
-    upsert_preferences,
-    get_preferences,
-    ensure_user,
-    log_user_activity,
     apply_preference_from_feedback,
     feedback_summary,
-    top_features_by_feedback,
+    get_preferences,
+    init_db,
+    insert_feedback,
     log_audit_event,
+    log_user_activity,
+    top_features_by_feedback,
+    upsert_preferences,
+    ensure_user,
 )
-from .security import get_current_user, enforce_rate_limit
-from .xai import predict, explain
+from .schemas import (
+    ExplainResponse,
+    FeedbackRequest,
+    PatientInput,
+    PredictResponse,
+    PreferenceRequest,
+)
+from .security import enforce_rate_limit, get_current_user
+from .xai import FEATURES, explain, predict
 
-app = FastAPI(title="Interactive XAI Screening API", version="1.1")
+app = FastAPI(title="Interactive XAI Screening API", version="1.2")
 
 # Allow browser clients (React/Vite) to make cross-origin API calls.
 # Use CORS_ORIGINS="https://your-frontend.vercel.app,https://another-origin"
@@ -84,6 +92,12 @@ def api_explain(inp: PatientInput, user_id: str = Depends(get_current_user)):
 
 @app.post("/feedback")
 def api_feedback(req: FeedbackRequest, user_id: str = Depends(get_current_user)):
+    if req.feedback_type in ("irrelevant", "confusing", "relevant"):
+        if req.feature_name is None:
+            raise HTTPException(status_code=422, detail="feature_name is required for feature-level feedback.")
+        if req.feature_name not in FEATURES:
+            raise HTTPException(status_code=422, detail="feature_name must match a known model feature.")
+
     insert_feedback(
         user_id=user_id,
         feedback_type=req.feedback_type,
@@ -118,5 +132,9 @@ def api_analytics_summary(user_id: str = Depends(get_current_user)):
 
 
 @app.get("/analytics/top_features")
-def api_top_features(feedback_type: str, limit: int = Query(10, ge=1, le=100), user_id: str = Depends(get_current_user)):
+def api_top_features(
+    feedback_type: Literal["relevant", "irrelevant", "confusing", "prefer_short", "prefer_long"],
+    limit: int = Query(10, ge=1, le=100),
+    user_id: str = Depends(get_current_user),
+):
     return {"feedback_type": feedback_type, "top_features": top_features_by_feedback(feedback_type, limit, user_id)}

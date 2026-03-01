@@ -20,6 +20,11 @@ export AUTH_TOKENS="dev-token:dev_user"
 
 Then use `Authorization: Bearer <token>` from the frontend/API client.
 
+Validation notes:
+- `preferences.top_k` must be between `1` and `10`.
+- `preferences.style` must be `simple` or `detailed`.
+- Feature-level feedback (`relevant`, `irrelevant`, `confusing`) requires `feature_name` that matches a model feature.
+
 ## Frontend (React)
 
 Run from `frontend/`:

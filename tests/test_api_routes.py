@@ -159,3 +159,39 @@ def test_analytics_endpoints(client):
     assert payload["feedback_type"] == "irrelevant"
     assert payload["top_features"][0]["feature"] == "sysBP"
     assert payload["top_features"][0]["count"] == 2
+
+
+def test_preferences_reject_invalid_bounds(client):
+    resp = client.post(
+        "/preferences",
+        json={"top_k": 50, "style": "detailed"},
+        headers=AUTH_HEADERS,
+    )
+    assert resp.status_code == 422
+
+
+def test_preferences_reject_invalid_style(client):
+    resp = client.post(
+        "/preferences",
+        json={"top_k": 5, "style": "verbose"},
+        headers=AUTH_HEADERS,
+    )
+    assert resp.status_code == 422
+
+
+def test_feedback_rejects_unknown_feature(client):
+    resp = client.post(
+        "/feedback",
+        json={"feedback_type": "irrelevant", "feature_name": "bad_feature"},
+        headers=AUTH_HEADERS,
+    )
+    assert resp.status_code == 422
+
+
+def test_feedback_requires_feature_for_feature_level_types(client):
+    resp = client.post(
+        "/feedback",
+        json={"feedback_type": "confusing", "feature_name": None},
+        headers=AUTH_HEADERS,
+    )
+    assert resp.status_code == 422

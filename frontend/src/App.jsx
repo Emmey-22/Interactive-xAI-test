@@ -47,6 +47,7 @@ const FIELD_META = {
 };
 
 const FIELD_ORDER = Object.keys(FIELD_META);
+const FEATURE_OPTIONS = FIELD_ORDER;
 
 function formatRisk(v) {
   if (typeof v !== "number") return "-";
@@ -424,7 +425,13 @@ export default function App() {
               </label>
               <label>
                 feature_name
-                <input value={feedbackFeature} onChange={(e) => setFeedbackFeature(e.target.value)} />
+                <select value={feedbackFeature} onChange={(e) => setFeedbackFeature(e.target.value)}>
+                  {FEATURE_OPTIONS.map((feature) => (
+                    <option key={feature} value={feature}>
+                      {feature}
+                    </option>
+                  ))}
+                </select>
               </label>
               <label>
                 message
@@ -443,6 +450,9 @@ export default function App() {
                 top_k
                 <input
                   type="number"
+                  min={1}
+                  max={10}
+                  step={1}
                   value={prefsOut?.top_k ?? 8}
                   onChange={(e) =>
                     setPrefsOut((prev) => ({ ...(prev || {}), top_k: Number(e.target.value) }))

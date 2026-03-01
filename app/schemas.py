@@ -1,5 +1,9 @@
+from typing import Any, Dict, List, Literal, Optional
+
 from pydantic import BaseModel, Field
-from typing import Optional, Dict, Any, List
+
+FeedbackType = Literal["relevant", "irrelevant", "confusing", "prefer_short", "prefer_long"]
+StyleType = Literal["simple", "detailed"]
 
 
 class PatientInput(BaseModel):
@@ -44,12 +48,12 @@ class ExplainResponse(BaseModel):
 
 
 class FeedbackRequest(BaseModel):
-    feedback_type: str  # e.g., relevant, irrelevant, confusing, prefer_short, prefer_long
-    feature_name: Optional[str] = None
-    case_id: Optional[str] = None
-    message: Optional[str] = None
+    feedback_type: FeedbackType
+    feature_name: Optional[str] = Field(default=None, min_length=1, max_length=64)
+    case_id: Optional[str] = Field(default=None, min_length=1, max_length=128)
+    message: Optional[str] = Field(default=None, max_length=1000)
 
 
 class PreferenceRequest(BaseModel):
-    top_k: int = 8
-    style: str = "simple"  # simple|detailed
+    top_k: int = Field(default=8, ge=1, le=10)
+    style: StyleType = "simple"

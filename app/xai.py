@@ -19,6 +19,7 @@ with open(os.path.join(ART_DIR, "screening_config.json"), "r") as f:
 
 _THRESHOLD = float(_cfg["screening_threshold"])
 _FEATURES = list(_cfg["features"])
+FEATURES = tuple(_FEATURES)
 
 # Optional background for faster/steadier SHAP
 _bg_path = os.path.join(ART_DIR, "shap_outputs", "shap_background_200.joblib")
