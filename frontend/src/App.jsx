@@ -49,16 +49,34 @@ const FIELD_META = {
 const FIELD_ORDER = Object.keys(FIELD_META);
 const FEATURE_OPTIONS = FIELD_ORDER;
 
+const FEEDBACK_LABELS = {
+  irrelevant: "This feature seems irrelevant",
+  confusing: "This feature is confusing",
+  prefer_short: "Prefer shorter explanations",
+  prefer_long: "Prefer detailed explanations",
+  relevant: "This feature is relevant"
+};
+
 function formatRisk(v) {
   if (typeof v !== "number") return "-";
   return `${(v * 100).toFixed(2)}%`;
 }
 
-function riskTone(risk) {
+function riskTone(risk, threshold) {
   if (typeof risk !== "number") return "neutral";
-  if (risk >= 0.5) return "high";
-  if (risk >= 0.2) return "medium";
+  if (typeof threshold !== "number") return "neutral";
+  if (risk >= threshold * 2) return "high";
+  if (risk >= threshold) return "medium";
   return "low";
+}
+
+function screeningStatusLabel(risk, threshold) {
+  if (typeof risk !== "number" || typeof threshold !== "number") return "-";
+  return risk >= threshold ? "Flagged for follow-up" : "Not flagged";
+}
+
+function feedbackTypeLabel(feedbackType) {
+  return FEEDBACK_LABELS[feedbackType] || feedbackType;
 }
 
 function AlertModal({ open, title, message, onClose }) {
@@ -129,9 +147,10 @@ export default function App() {
 
   const explainRisk = useMemo(() => formatRisk(explainOut?.risk), [explainOut]);
   const predictRisk = useMemo(() => formatRisk(predictOut?.risk), [predictOut]);
-  const tone = riskTone(explainOut?.risk ?? predictOut?.risk);
   const hasSession = authToken.trim().length > 0;
-  const hasCaseContext = Boolean(predictOut || explainOut);
+  const currentRisk = explainOut?.risk ?? predictOut?.risk;
+  const currentThreshold = explainOut?.threshold ?? predictOut?.threshold;
+  const tone = riskTone(currentRisk, currentThreshold);
 
   function updateField(name, value) {
     setPatient((prev) => ({ ...prev, [name]: value }));
@@ -416,11 +435,11 @@ export default function App() {
               <label>
                 feedback_type
                 <select value={feedbackType} onChange={(e) => setFeedbackType(e.target.value)}>
-                  <option value="irrelevant">irrelevant</option>
-                  <option value="confusing">confusing</option>
-                  <option value="prefer_short">prefer_short</option>
-                  <option value="prefer_long">prefer_long</option>
-                  <option value="relevant">relevant</option>
+                  <option value="irrelevant">{FEEDBACK_LABELS.irrelevant}</option>
+                  <option value="confusing">{FEEDBACK_LABELS.confusing}</option>
+                  <option value="prefer_short">{FEEDBACK_LABELS.prefer_short}</option>
+                  <option value="prefer_long">{FEEDBACK_LABELS.prefer_long}</option>
+                  <option value="relevant">{FEEDBACK_LABELS.relevant}</option>
                 </select>
               </label>
               <label>
@@ -481,14 +500,14 @@ export default function App() {
         <section className="stack">
           <section className={`insight-hero tone-${tone}`}>
             <div className="risk-ring" aria-hidden="true">
-              <div className="risk-ring-inner">{predictRisk}</div>
+              <div className="risk-ring-inner">{formatRisk(currentRisk)}</div>
             </div>
             <div>
               <h2>Risk Command Center</h2>
               <p>{loading ? busyLabel || "Processing..." : notice || "Model ready for next case."}</p>
               <p className="muted">
-                Threshold: {predictOut ? predictOut.threshold.toFixed(4) : "-"} | Status:{" "}
-                {predictOut ? (predictOut.flagged ? "Flagged" : "Not Flagged") : "-"}
+                Screening threshold: {typeof currentThreshold === "number" ? currentThreshold.toFixed(4) : "-"} |
+                Screening status: {screeningStatusLabel(currentRisk, currentThreshold)}
               </p>
               {error && <p className="error">{error}</p>}
             </div>
@@ -503,8 +522,7 @@ export default function App() {
                   Risk: <strong>{predictRisk}</strong>
                 </p>
                 <p>
-                  Status:{" "}
-                  <strong>{predictOut ? (predictOut.flagged ? "Flagged" : "Not Flagged") : "-"}</strong>
+                  Screening status: <strong>{screeningStatusLabel(predictOut?.risk, predictOut?.threshold)}</strong>
                 </p>
               </div>
               <div className="result-card">
@@ -513,7 +531,7 @@ export default function App() {
                   Risk: <strong>{explainRisk}</strong>
                 </p>
                 <p>
-                  Flagged: <strong>{explainOut ? String(explainOut.flagged) : "-"}</strong>
+                  Screening status: <strong>{screeningStatusLabel(explainOut?.risk, explainOut?.threshold)}</strong>
                 </p>
                 <p>
                   Disputed: <strong>{explainOut?.disputed_features?.join(", ") || "-"}</strong>
@@ -521,13 +539,13 @@ export default function App() {
               </div>
               <div className="result-card">
                 <h3>Analytics Summary</h3>
-                {!hasCaseContext ? (
-                  <p className="muted">Run Predict or Explain first.</p>
+                {!hasSession ? (
+                  <p className="muted">Enter a token and refresh profile.</p>
                 ) : analyticsOut?.summary?.length ? (
                   <ul className="summary-list">
                     {analyticsOut.summary.map((s) => (
                       <li key={s.feedback_type}>
-                        <span>{s.feedback_type}</span>
+                        <span>{feedbackTypeLabel(s.feedback_type)}</span>
                         <strong>{s.count}</strong>
                       </li>
                     ))}
@@ -538,8 +556,8 @@ export default function App() {
               </div>
               <div className="result-card">
                 <h3>Top Irrelevant Features</h3>
-                {!hasCaseContext ? (
-                  <p className="muted">Run Predict or Explain first.</p>
+                {!hasSession ? (
+                  <p className="muted">Enter a token and refresh profile.</p>
                 ) : topFeaturesOut.length ? (
                   <ul className="summary-list">
                     {topFeaturesOut.map((f) => (
