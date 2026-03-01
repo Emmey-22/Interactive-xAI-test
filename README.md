@@ -84,3 +84,9 @@ pytest -q
 2. Enter a `User ID`.
 3. Run **Predict Risk** then **Explain Drivers**.
 4. Confirm analytics cards are user-specific.
+
+
+## Phase 4 explainability notes
+- Explanations are SHAP attributions from the base XGBoost model.
+- Displayed risk is produced by a calibrated model (`xgb_calibrated_screening`).
+- The API now returns `meta.uncertainty_label` and `meta.top_k_semantics` to improve interpretation at the UI layer.

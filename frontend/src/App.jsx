@@ -79,6 +79,13 @@ function feedbackTypeLabel(feedbackType) {
   return FEEDBACK_LABELS[feedbackType] || feedbackType;
 }
 
+function uncertaintyLabelText(label) {
+  if (label === "higher_uncertainty_near_threshold") return "Higher uncertainty: risk is close to screening threshold.";
+  if (label === "moderate_uncertainty") return "Moderate uncertainty: interpret with supporting context.";
+  if (label === "lower_uncertainty") return "Lower uncertainty for threshold decision.";
+  return "-";
+}
+
 function AlertModal({ open, title, message, onClose }) {
   if (!open) return null;
   return (
@@ -580,6 +587,20 @@ export default function App() {
               <FeatureTable title="Top Positive Contributors" items={explainOut?.top_positive || []} />
               <FeatureTable title="Top Negative Contributors" items={explainOut?.top_negative || []} />
               <FeatureTable title="Hidden Contributors (Disputed)" items={explainOut?.hidden_contributors || []} />
+              <div className="result-card">
+                <h3>Explanation Method</h3>
+                <p>
+                  Attribution model: <strong>{explainOut?.meta?.attribution_model || "-"}</strong>
+                </p>
+                <p>
+                  Risk model: <strong>{explainOut?.meta?.risk_model || "-"}</strong>
+                </p>
+                <p className="muted">{explainOut?.meta?.attribution_scope || "-"}</p>
+                <p>
+                  Uncertainty: <strong>{uncertaintyLabelText(explainOut?.meta?.uncertainty_label)}</strong>
+                </p>
+                <p className="muted">{explainOut?.meta?.top_k_semantics || "-"}</p>
+              </div>
               <div className="result-card">
                 <h3>Clarifications</h3>
                 {explainOut?.meta?.clarifications?.length ? (
