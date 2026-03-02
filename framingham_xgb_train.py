@@ -6,6 +6,7 @@ import json
 import joblib
 import numpy as np
 import pandas as pd
+from datetime import datetime
 
 from sklearn.model_selection import train_test_split, StratifiedKFold, RandomizedSearchCV
 from sklearn.pipeline import Pipeline
@@ -49,9 +50,11 @@ def find_best_threshold(y_true, y_prob, metric="f1"):
 
 
 def main():
-    data_path = r"C:\Users\Hp\Downloads\project file\framingham1.csv"
-    out_dir = r"C:\Users\Hp\Downloads\project file\framingham_xgb_artifacts"
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    data_path = os.path.join(base_dir, "framingham1.csv")
+    out_dir = os.environ.get("ARTIFACT_DIR", os.path.join(base_dir, "artifacts"))
     os.makedirs(out_dir, exist_ok=True)
+    model_version = os.environ.get("MODEL_VERSION", datetime.utcnow().strftime("%Y%m%dT%H%M%SZ"))
 
     # -----------------------------
     # 1) Load data + basic checks
@@ -257,6 +260,9 @@ def main():
         "continuous_cols": continuous_cols,
         "best_params": best_params,
         "random_state": RANDOM_STATE,
+        "model_version": model_version,
+        "trained_at_utc": datetime.utcnow().isoformat() + "Z",
+        "artifact_dir": out_dir,
     }
 
     joblib.dump(prep, os.path.join(out_dir, "preprocessor.joblib"))

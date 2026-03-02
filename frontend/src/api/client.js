@@ -1,5 +1,6 @@
 export const API_BASE =
   import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8000";
+export const API_TOKEN = import.meta.env.VITE_API_TOKEN || "";
 
 const PATIENT_FIELDS = [
   "male",
@@ -29,8 +30,13 @@ function normalizePatientPayload(form) {
 }
 
 async function apiFetch(path, options = {}) {
+  const authHeaders = API_TOKEN ? { Authorization: `Bearer ${API_TOKEN}` } : {};
   const res = await fetch(`${API_BASE}${path}`, {
-    headers: { "Content-Type": "application/json", ...(options.headers || {}) },
+    headers: {
+      "Content-Type": "application/json",
+      ...authHeaders,
+      ...(options.headers || {})
+    },
     ...options
   });
   if (!res.ok) {
@@ -40,15 +46,17 @@ async function apiFetch(path, options = {}) {
   return res.json();
 }
 
-export function predictPatient(patientForm, userId) {
-  return apiFetch(`/predict?user_id=${encodeURIComponent(userId)}`, {
+export function predictPatient(patientForm, userId, caseId = null) {
+  const caseParam = caseId ? `&case_id=${encodeURIComponent(caseId)}` : "";
+  return apiFetch(`/predict?user_id=${encodeURIComponent(userId)}${caseParam}`, {
     method: "POST",
     body: JSON.stringify(normalizePatientPayload(patientForm))
   });
 }
 
-export function explainPatient(patientForm, userId) {
-  return apiFetch(`/explain?user_id=${encodeURIComponent(userId)}`, {
+export function explainPatient(patientForm, userId, caseId = null) {
+  const caseParam = caseId ? `&case_id=${encodeURIComponent(caseId)}` : "";
+  return apiFetch(`/explain?user_id=${encodeURIComponent(userId)}${caseParam}`, {
     method: "POST",
     body: JSON.stringify(normalizePatientPayload(patientForm))
   });
@@ -58,7 +66,7 @@ export function submitFeedback({
   userId,
   feedbackType,
   featureName,
-  caseId = "frontend_case",
+  caseId = null,
   message
 }) {
   return apiFetch("/feedback", {

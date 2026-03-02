@@ -10,3 +10,11 @@ services:
         value: artifacts
       - key: CORS_ORIGINS
         sync: false
+      - key: AUTH_REQUIRED
+        value: "false"
+      - key: USER_TOKENS
+        sync: false
+      - key: RATE_LIMIT_ENABLED
+        value: "true"
+      - key: RATE_LIMIT_PER_MIN
+        value: "60"

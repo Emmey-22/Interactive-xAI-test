@@ -23,7 +23,7 @@ def pick_threshold_for_target_recall(y_true, y_prob, target_recall=0.85):
 def main():
     base_dir = os.path.dirname(os.path.abspath(__file__))
     data_path = os.path.join(base_dir, "framingham1.csv")
-    art_dir = os.path.join(base_dir, "framingham_xgb_artifacts")
+    art_dir = os.environ.get("ARTIFACT_DIR", os.path.join(base_dir, "artifacts"))
 
     prep = joblib.load(os.path.join(art_dir, "preprocessor.joblib"))
     base_model = joblib.load(os.path.join(art_dir, "xgb_model.joblib"))
@@ -42,7 +42,8 @@ def main():
         X_trainval, y_trainval, test_size=0.20, stratify=y_trainval, random_state=RANDOM_STATE
     )
 
-    X_train_p = prep.fit_transform(X_train, y_train)
+    # Reuse the fitted preprocessor from training artifacts to avoid feature-order drift.
+    X_train_p = prep.transform(X_train)
     X_val_p = prep.transform(X_val)
     X_test_p = prep.transform(X_test)
 

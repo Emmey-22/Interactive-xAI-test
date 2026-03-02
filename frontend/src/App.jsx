@@ -46,16 +46,29 @@ const FIELD_META = {
 };
 
 const FIELD_ORDER = Object.keys(FIELD_META);
+const FEATURE_FEEDBACK_TYPES = ["irrelevant", "confusing", "relevant"];
+
+function createCaseId() {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return `case_${crypto.randomUUID().replace(/-/g, "").slice(0, 16)}`;
+  }
+  return `case_${Date.now()}`;
+}
 
 function formatRisk(v) {
   if (typeof v !== "number") return "-";
   return `${(v * 100).toFixed(2)}%`;
 }
 
-function riskTone(risk) {
+function riskTone(risk, threshold) {
   if (typeof risk !== "number") return "neutral";
-  if (risk >= 0.5) return "high";
-  if (risk >= 0.2) return "medium";
+  if (typeof threshold !== "number" || threshold <= 0) {
+    if (risk >= 0.5) return "high";
+    if (risk >= 0.2) return "medium";
+    return "low";
+  }
+  if (risk >= threshold * 1.2) return "high";
+  if (risk >= threshold) return "medium";
   return "low";
 }
 
@@ -72,7 +85,7 @@ function AlertModal({ open, title, message, onClose }) {
   );
 }
 
-function FeatureTable({ title, items }) {
+function FeatureTable({ title, items, resolveFeatureLabel }) {
   return (
     <div className="result-card">
       <h3>{title}</h3>
@@ -90,7 +103,10 @@ function FeatureTable({ title, items }) {
           <tbody>
             {items.map((item, idx) => (
               <tr key={`${item.feature}-${idx}`}>
-                <td>{item.feature}</td>
+                <td>
+                  {resolveFeatureLabel ? resolveFeatureLabel(item.feature) : item.feature}
+                  {item.disputed ? " (disputed)" : ""}
+                </td>
                 <td>{String(item.value)}</td>
                 <td>{Number(item.shap).toFixed(4)}</td>
               </tr>
@@ -108,6 +124,7 @@ export default function App() {
   const [feedbackType, setFeedbackType] = useState("irrelevant");
   const [feedbackFeature, setFeedbackFeature] = useState("sysBP");
   const [feedbackMessage, setFeedbackMessage] = useState("");
+  const [activeCaseId, setActiveCaseId] = useState("");
   const [loading, setLoading] = useState(false);
   const [busyLabel, setBusyLabel] = useState("");
   const [error, setError] = useState("");
@@ -124,11 +141,33 @@ export default function App() {
     message: ""
   });
 
+  const latestOut = explainOut ?? predictOut;
+  const latestRiskValue = latestOut?.risk;
+  const latestThresholdValue = latestOut?.threshold;
+  const latestFlagged = latestOut?.flagged;
+  const latestCaseId = latestOut?.case_id || activeCaseId;
+  const latestModelVersion = latestOut?.model_version || explainOut?.meta?.model_version;
+  const latestRisk = useMemo(() => formatRisk(latestRiskValue), [latestRiskValue]);
   const explainRisk = useMemo(() => formatRisk(explainOut?.risk), [explainOut]);
   const predictRisk = useMemo(() => formatRisk(predictOut?.risk), [predictOut]);
-  const tone = riskTone(explainOut?.risk ?? predictOut?.risk);
+  const tone = riskTone(latestRiskValue, latestThresholdValue);
   const hasSession = userId.trim().length > 0;
-  const hasCaseContext = Boolean(predictOut || explainOut);
+  const feedbackNeedsFeature = FEATURE_FEEDBACK_TYPES.includes(feedbackType);
+  const ringPct = useMemo(() => {
+    if (typeof latestRiskValue !== "number") return 0;
+    return Math.max(0, Math.min(100, latestRiskValue * 100));
+  }, [latestRiskValue]);
+
+  function resolveFeatureLabel(featureName) {
+    if (!featureName) return "-";
+    const direct = FIELD_META[featureName]?.label;
+    if (direct) return direct;
+    if (typeof featureName === "string" && featureName.includes("__")) {
+      const raw = featureName.split("__").at(-1);
+      return FIELD_META[raw]?.label || featureName;
+    }
+    return featureName;
+  }
 
   function updateField(name, value) {
     setPatient((prev) => ({ ...prev, [name]: value }));
@@ -182,10 +221,13 @@ export default function App() {
     setLoading(true);
     setError("");
     setNotice("");
+    const nextCaseId = createCaseId();
     try {
-      const data = await predictPatient(patient, userId);
+      const data = await predictPatient(patient, userId, nextCaseId);
       setPredictOut(data);
-      setNotice("Prediction completed.");
+      setExplainOut(null);
+      setActiveCaseId(data.case_id || nextCaseId);
+      setNotice(`Prediction completed for case ${data.case_id || nextCaseId}.`);
     } catch (e) {
       setError(e.message);
     } finally {
@@ -208,10 +250,12 @@ export default function App() {
     setLoading(true);
     setError("");
     setNotice("");
+    const caseIdForExplain = activeCaseId || createCaseId();
     try {
-      const data = await explainPatient(patient, userId);
+      const data = await explainPatient(patient, userId, caseIdForExplain);
       setExplainOut(data);
-      setNotice("Explanation generated.");
+      setActiveCaseId(data.case_id || caseIdForExplain);
+      setNotice(`Explanation generated for case ${data.case_id || caseIdForExplain}.`);
     } catch (e) {
       setError(e.message);
     } finally {
@@ -225,6 +269,14 @@ export default function App() {
       openAlert("User ID Required", "Enter a User ID before saving feedback.");
       return;
     }
+    if (feedbackNeedsFeature && !activeCaseId) {
+      openAlert("Case ID Required", "Run Predict or Explain first to create a case context for feature feedback.");
+      return;
+    }
+    if (feedbackNeedsFeature && !feedbackFeature) {
+      openAlert("Feature Required", "Select a feature for this feedback type.");
+      return;
+    }
     setBusyLabel("Saving feedback...");
     setLoading(true);
     setError("");
@@ -233,12 +285,13 @@ export default function App() {
       await submitFeedback({
         userId,
         feedbackType,
-        featureName: feedbackFeature,
+        featureName: feedbackNeedsFeature ? feedbackFeature : null,
+        caseId: feedbackNeedsFeature ? activeCaseId : null,
         message: feedbackMessage
       });
       await loadPreferences();
       await loadAnalytics();
-      setNotice("Feedback saved and profile refreshed.");
+      setNotice(`Feedback saved${activeCaseId ? ` for case ${activeCaseId}` : ""} and profile refreshed.`);
     } catch (e) {
       setError(e.message);
     } finally {
@@ -313,6 +366,9 @@ export default function App() {
 
   function resetPatient() {
     setPatient(INITIAL_PATIENT);
+    setActiveCaseId("");
+    setPredictOut(null);
+    setExplainOut(null);
     setNotice("Patient form cleared.");
   }
 
@@ -405,13 +461,27 @@ export default function App() {
               </label>
               <label>
                 feature_name
-                <input value={feedbackFeature} onChange={(e) => setFeedbackFeature(e.target.value)} />
+                <select
+                  value={feedbackNeedsFeature ? feedbackFeature : ""}
+                  onChange={(e) => setFeedbackFeature(e.target.value)}
+                  disabled={!feedbackNeedsFeature}
+                >
+                  <option value="">Select feature</option>
+                  {FIELD_ORDER.map((field) => (
+                    <option key={field} value={field}>
+                      {FIELD_META[field].label}
+                    </option>
+                  ))}
+                </select>
               </label>
               <label>
                 message
                 <input value={feedbackMessage} onChange={(e) => setFeedbackMessage(e.target.value)} />
               </label>
             </div>
+            <p className="muted">
+              Active Case: <strong>{activeCaseId || "-"}</strong>
+            </p>
             <button onClick={saveFeedback} disabled={loading}>
               Save Feedback
             </button>
@@ -451,16 +521,18 @@ export default function App() {
 
         <section className="stack">
           <section className={`insight-hero tone-${tone}`}>
-            <div className="risk-ring" aria-hidden="true">
-              <div className="risk-ring-inner">{predictRisk}</div>
+            <div className="risk-ring" aria-hidden="true" style={{ "--ring-pct": `${ringPct}%` }}>
+              <div className="risk-ring-inner">{latestRisk}</div>
             </div>
             <div>
               <h2>Risk Command Center</h2>
               <p>{loading ? busyLabel || "Processing..." : notice || "Model ready for next case."}</p>
               <p className="muted">
-                Threshold: {predictOut ? predictOut.threshold.toFixed(4) : "-"} | Status:{" "}
-                {predictOut ? (predictOut.flagged ? "Flagged" : "Not Flagged") : "-"}
+                Threshold: {typeof latestThresholdValue === "number" ? latestThresholdValue.toFixed(4) : "-"} |
+                {" "}Status: {typeof latestFlagged === "boolean" ? (latestFlagged ? "Flagged" : "Not Flagged") : "-"}
               </p>
+              <p className="muted">Case ID: {latestCaseId || "-"}</p>
+              <p className="muted">Model Version: {latestModelVersion || "-"}</p>
               {error && <p className="error">{error}</p>}
             </div>
           </section>
@@ -487,13 +559,24 @@ export default function App() {
                   Flagged: <strong>{explainOut ? String(explainOut.flagged) : "-"}</strong>
                 </p>
                 <p>
-                  Disputed: <strong>{explainOut?.disputed_features?.join(", ") || "-"}</strong>
+                  Case: <strong>{explainOut?.case_id || activeCaseId || "-"}</strong>
+                </p>
+                <p>
+                  Disputed:{" "}
+                  <strong>
+                    {explainOut?.disputed_features?.length
+                      ? explainOut.disputed_features.map(resolveFeatureLabel).join(", ")
+                      : "-"}
+                  </strong>
+                </p>
+                <p>
+                  Adaptation: <strong>{explainOut?.meta?.adaptation_scope || "-"}</strong>
                 </p>
               </div>
               <div className="result-card">
                 <h3>Analytics Summary</h3>
-                {!hasCaseContext ? (
-                  <p className="muted">Run Predict or Explain first.</p>
+                {!hasSession ? (
+                  <p className="muted">Enter a User ID and refresh profile.</p>
                 ) : analyticsOut?.summary?.length ? (
                   <ul className="summary-list">
                     {analyticsOut.summary.map((s) => (
@@ -509,13 +592,13 @@ export default function App() {
               </div>
               <div className="result-card">
                 <h3>Top Irrelevant Features</h3>
-                {!hasCaseContext ? (
-                  <p className="muted">Run Predict or Explain first.</p>
+                {!hasSession ? (
+                  <p className="muted">Enter a User ID and refresh profile.</p>
                 ) : topFeaturesOut.length ? (
                   <ul className="summary-list">
                     {topFeaturesOut.map((f) => (
                       <li key={f.feature}>
-                        <span>{f.feature}</span>
+                        <span>{resolveFeatureLabel(f.feature)}</span>
                         <strong>{f.count}</strong>
                       </li>
                     ))}
@@ -530,16 +613,28 @@ export default function App() {
           <section className="card">
             <h2>Feature-Level Evidence</h2>
             <div className="result-grid">
-              <FeatureTable title="Top Positive Contributors" items={explainOut?.top_positive || []} />
-              <FeatureTable title="Top Negative Contributors" items={explainOut?.top_negative || []} />
-              <FeatureTable title="Hidden Contributors (Disputed)" items={explainOut?.hidden_contributors || []} />
+              <FeatureTable
+                title="Top Positive Contributors"
+                items={explainOut?.top_positive || []}
+                resolveFeatureLabel={resolveFeatureLabel}
+              />
+              <FeatureTable
+                title="Top Negative Contributors"
+                items={explainOut?.top_negative || []}
+                resolveFeatureLabel={resolveFeatureLabel}
+              />
+              <FeatureTable
+                title="Disputed Contributors (Visible, Case-Scoped)"
+                items={explainOut?.hidden_contributors || []}
+                resolveFeatureLabel={resolveFeatureLabel}
+              />
               <div className="result-card">
                 <h3>Clarifications</h3>
                 {explainOut?.meta?.clarifications?.length ? (
                   <ul className="clarify-list">
                     {explainOut.meta.clarifications.map((c) => (
                       <li key={c.feature}>
-                        <strong>{c.feature}</strong>
+                        <strong>{resolveFeatureLabel(c.feature)}</strong>
                         <span>
                           {c.desc} ({c.unit})
                         </span>

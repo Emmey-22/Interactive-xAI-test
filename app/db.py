@@ -44,6 +44,27 @@ def init_db():
     )
     """)
 
+    # Query paths hit user+feedback_type+feature_name and chronological activity.
+    cur.execute("""
+    CREATE INDEX IF NOT EXISTS idx_feedback_user_type_feature
+    ON feedback_events(user_id, feedback_type, feature_name)
+    """)
+
+    cur.execute("""
+    CREATE INDEX IF NOT EXISTS idx_feedback_user_case_type_feature
+    ON feedback_events(user_id, case_id, feedback_type, feature_name)
+    """)
+
+    cur.execute("""
+    CREATE INDEX IF NOT EXISTS idx_feedback_user_created_at
+    ON feedback_events(user_id, created_at DESC)
+    """)
+
+    cur.execute("""
+    CREATE INDEX IF NOT EXISTS idx_activity_user_event_created
+    ON user_activity_events(user_id, event_type, created_at DESC)
+    """)
+
     conn.commit()
     conn.close()
 
@@ -114,27 +135,41 @@ def insert_feedback(user_id: str, feedback_type: str,
     conn.commit()
     conn.close()
 
-def get_disputed_features(user_id: str):
+def get_disputed_features(user_id: str, case_id: Optional[str] = None):
     # treat "irrelevant" as disputed for rendering rules
     conn = get_conn()
     cur = conn.cursor()
-    cur.execute("""
-    SELECT DISTINCT feature_name
-    FROM feedback_events
-    WHERE user_id=? AND feedback_type='irrelevant' AND feature_name IS NOT NULL
-    """, (user_id,))
+    if case_id is not None:
+        cur.execute("""
+        SELECT DISTINCT feature_name
+        FROM feedback_events
+        WHERE user_id=? AND case_id=? AND feedback_type='irrelevant' AND feature_name IS NOT NULL
+        """, (user_id, case_id))
+    else:
+        cur.execute("""
+        SELECT DISTINCT feature_name
+        FROM feedback_events
+        WHERE user_id=? AND feedback_type='irrelevant' AND feature_name IS NOT NULL
+        """, (user_id,))
     rows = cur.fetchall()
     conn.close()
     return [r["feature_name"] for r in rows]
 
-def get_confusing_features(user_id: str):
+def get_confusing_features(user_id: str, case_id: Optional[str] = None):
     conn = get_conn()
     cur = conn.cursor()
-    cur.execute("""
-    SELECT DISTINCT feature_name
-    FROM feedback_events
-    WHERE user_id=? AND feedback_type='confusing' AND feature_name IS NOT NULL
-    """, (user_id,))
+    if case_id is not None:
+        cur.execute("""
+        SELECT DISTINCT feature_name
+        FROM feedback_events
+        WHERE user_id=? AND case_id=? AND feedback_type='confusing' AND feature_name IS NOT NULL
+        """, (user_id, case_id))
+    else:
+        cur.execute("""
+        SELECT DISTINCT feature_name
+        FROM feedback_events
+        WHERE user_id=? AND feedback_type='confusing' AND feature_name IS NOT NULL
+        """, (user_id,))
     rows = cur.fetchall()
     conn.close()
     return [r["feature_name"] for r in rows]
@@ -180,6 +215,7 @@ def feedback_summary(user_id: str = None):
 def top_features_by_feedback(feedback_type: str, limit: int = 10, user_id: str = None):
     conn = get_conn()
     cur = conn.cursor()
+    safe_limit = max(1, min(100, int(limit)))
 
     if user_id is not None:
         cur.execute("""
@@ -189,7 +225,7 @@ def top_features_by_feedback(feedback_type: str, limit: int = 10, user_id: str =
         GROUP BY feature_name
         ORDER BY n DESC
         LIMIT ?
-        """, (feedback_type, user_id, int(limit)))
+        """, (feedback_type, user_id, safe_limit))
     else:
         cur.execute("""
         SELECT feature_name, COUNT(*) AS n
@@ -198,7 +234,7 @@ def top_features_by_feedback(feedback_type: str, limit: int = 10, user_id: str =
         GROUP BY feature_name
         ORDER BY n DESC
         LIMIT ?
-        """, (feedback_type, int(limit)))
+        """, (feedback_type, safe_limit))
 
     rows = cur.fetchall()
     conn.close()

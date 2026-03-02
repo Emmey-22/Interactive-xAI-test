@@ -113,6 +113,7 @@ p {
 }
 
 .insight-hero {
+  --ring-color: var(--brand);
   border-radius: 16px;
   border: 1px solid var(--line);
   padding: 16px;
@@ -124,18 +125,22 @@ p {
 }
 
 .tone-low {
+  --ring-color: var(--good);
   background: linear-gradient(140deg, #effdf8, #f8fffd);
 }
 
 .tone-medium {
+  --ring-color: var(--warn);
   background: linear-gradient(140deg, #fff9eb, #fffdf5);
 }
 
 .tone-high {
+  --ring-color: var(--bad);
   background: linear-gradient(140deg, #fff1f1, #fff9f9);
 }
 
 .tone-neutral {
+  --ring-color: var(--brand);
   background: linear-gradient(140deg, #f4f8ff, #f9fbff);
 }
 
@@ -143,7 +148,10 @@ p {
   width: 120px;
   height: 120px;
   border-radius: 50%;
-  background: conic-gradient(var(--brand) 0 68%, #dbe6f7 68% 100%);
+  background: conic-gradient(
+    var(--ring-color) 0 var(--ring-pct, 0%),
+    #dbe6f7 var(--ring-pct, 0%) 100%
+  );
   display: grid;
   place-items: center;
   animation: pulseRing 2.8s ease-in-out infinite;

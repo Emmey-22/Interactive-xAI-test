@@ -11,12 +11,13 @@ RANDOM_STATE = 42
 
 def main():
     script_dir = os.path.dirname(os.path.abspath(__file__))
-    data_path = "/mnt/data/framingham1.csv"
-    art_dir = "/mnt/data/framingham_xgb_artifacts"
-    if not os.path.exists(data_path):
-        data_path = os.path.join(script_dir, "framingham1.csv")
+    data_path = os.path.join(script_dir, "framingham1.csv")
+    art_dir = os.environ.get("ARTIFACT_DIR", os.path.join(script_dir, "artifacts"))
     if not os.path.exists(os.path.join(art_dir, "preprocessor.joblib")):
-        art_dir = os.path.join(script_dir, "framingham_xgb_artifacts")
+        raise FileNotFoundError(
+            f"Missing preprocessor artifact in {art_dir}. "
+            "Run training and calibration with matching ARTIFACT_DIR first."
+        )
     out_dir = os.path.join(art_dir, "shap_outputs")
     os.makedirs(out_dir, exist_ok=True)
 
@@ -29,16 +30,15 @@ def main():
         cfg = json.load(f)
 
     screening_threshold = float(cfg["screening_threshold"])
-    feature_names = cfg["features"]
+    feature_names = list(prep.get_feature_names_out())
 
     # Load data
     df = pd.read_csv(data_path)
     X = df.drop(columns=["TenYearCHD"])
     y = df["TenYearCHD"].astype(int)
 
-    # Fit preprocessor on full X for stable SHAP background transformation
-    # (for strict methodology, fit only on training; for practical app, this is acceptable if you state it)
-    X_p = prep.fit_transform(X, y)
+    # Reuse the fitted preprocessor from training artifacts.
+    X_p = prep.transform(X)
 
     # -----------------------------
     # 1) Global SHAP (TreeExplainer)
