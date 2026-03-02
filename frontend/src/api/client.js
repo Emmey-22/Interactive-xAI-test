@@ -1,5 +1,22 @@
-export const API_BASE =
-  import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8000";
+function normalizeApiBase(rawBaseUrl) {
+  const fallback = "http://127.0.0.1:8000";
+  const value = (rawBaseUrl || "").trim();
+  const candidate = value || fallback;
+
+  try {
+    const parsed = new URL(candidate);
+    let path = parsed.pathname.replace(/\/+$/, "");
+    if (path.endsWith("/docs")) {
+      path = path.slice(0, -5);
+    }
+    parsed.pathname = path || "";
+    return parsed.toString().replace(/\/$/, "");
+  } catch {
+    return fallback;
+  }
+}
+
+export const API_BASE = normalizeApiBase(import.meta.env.VITE_API_BASE_URL);
 export const API_TOKEN = import.meta.env.VITE_API_TOKEN || "";
 
 const PATIENT_FIELDS = [
@@ -30,8 +47,9 @@ function normalizePatientPayload(form) {
 }
 
 async function apiFetch(path, options = {}) {
+  const url = `${API_BASE}${path}`;
   const authHeaders = API_TOKEN ? { Authorization: `Bearer ${API_TOKEN}` } : {};
-  const res = await fetch(`${API_BASE}${path}`, {
+  const res = await fetch(url, {
     headers: {
       "Content-Type": "application/json",
       ...authHeaders,
@@ -41,7 +59,11 @@ async function apiFetch(path, options = {}) {
   });
   if (!res.ok) {
     const text = await res.text();
-    throw new Error(`${res.status} ${res.statusText}: ${text}`);
+    const hint =
+      res.status === 404
+        ? " Hint: set VITE_API_BASE_URL to your backend root URL (no /docs)."
+        : "";
+    throw new Error(`${res.status} ${res.statusText} for ${url}: ${text}${hint}`);
   }
   return res.json();
 }

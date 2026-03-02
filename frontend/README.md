@@ -6,6 +6,8 @@
    - `npm.cmd install`
 2. Set API URL:
    - copy `.env.example` to `.env`
+   - set `VITE_API_BASE_URL` to backend root URL (example: `https://interactive-xai-api.onrender.com`)
+   - do not use `/docs` in `VITE_API_BASE_URL`
    - optionally set `VITE_API_TOKEN` when backend auth is enabled
 3. Start dev server:
    - `npm.cmd run dev`

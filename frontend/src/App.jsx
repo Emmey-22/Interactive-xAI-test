@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import {
+  API_BASE,
   explainPatient,
   getAnalyticsSummary,
   getPreferences,
@@ -398,6 +399,7 @@ export default function App() {
             User ID
             <input value={userId} onChange={(e) => setUserId(e.target.value)} />
           </label>
+          <p className="muted">API Base: {API_BASE}</p>
           <div className="actions">
             <button className="button-ghost" onClick={refreshAll} disabled={loading}>
               Refresh Profile
