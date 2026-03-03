@@ -184,7 +184,7 @@ def explain(patient_dict, user_id=None, case_id=None):
         "explanation_source": "mean_tree_shap_over_calibration_estimators",
         "explanation_model_count": len(_EXPLAINERS),
         "explanation_note": "SHAP values come from tree models under calibration; calibrated probability is used for final risk.",
-        "adaptation_scope": "explanation_presentation",
+        "adaptation_scope": "case" if case_id else "user",
         "case_feedback_id": case_id,
         "clarifications": clarifications,
         "disclaimer": "This tool is for screening support only and does not provide a medical diagnosis. Consult a qualified clinician for decisions."
