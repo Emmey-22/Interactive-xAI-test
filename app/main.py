@@ -39,7 +39,8 @@ _default_origins = [
     "http://localhost:5173",
     "http://127.0.0.1:5173",
 ]
-_cors_origins = [o.strip() for o in _origins_env.split(",") if o.strip()] if _origins_env else _default_origins
+env_origins = [o.strip() for o in _origins_env.split(",") if o.strip()]
+_cors_origins = sorted(set(_default_origins + env_origins))
 
 app.add_middleware(
     CORSMiddleware,
@@ -178,3 +179,11 @@ def api_top_features(
 @app.get("/model/info")
 def api_model_info():
     return get_model_info()
+
+@app.get("/__build")
+def build_info():
+    return {
+        "service": "interactive-xai-api",
+        "git_sha": os.getenv("GIT_SHA", "unknown"),
+        "auth_required": os.getenv("AUTH_REQUIRED", "unset"),
+    }
