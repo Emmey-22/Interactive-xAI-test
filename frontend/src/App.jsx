@@ -223,18 +223,32 @@ export default function App() {
     setNotice("");
     const nextCaseId = createCaseId();
     try {
-      const data = await predictPatient(patient, userId, nextCaseId);
-      setPredictOut(data);
-      setExplainOut(null);
-      setActiveCaseId(data.case_id || nextCaseId);
-      setNotice(`Prediction completed for case ${data.case_id || nextCaseId}.`);
-    } catch (e) {
-      setError(e.message);
-    } finally {
-      setLoading(false);
-      setBusyLabel("");
+    const data = await predictPatient(patient, userId, nextCaseId);
+    setPredictOut(data);
+
+    const caseId = data.case_id || nextCaseId;
+    setActiveCaseId(caseId);
+    setNotice(`Prediction completed for case ${caseId}.`);
+
+    // Auto-generate explanation immediately after prediction
+    try {
+      const exp = await explainPatient(patient, userId, caseId);
+      setExplainOut(exp);
+      setNotice(`Prediction + explanation completed for case ${caseId}.`);
+    } catch (explainErr) {
+      // Keep prediction visible even if explanation fails
+      //setExplainOut(null);
+      setNotice(`Prediction completed for case ${caseId}, but explanation failed.`);
+      setError(String(explainErr.message || explainErr));
     }
+  } catch (e) {
+    setError(e.message);
+  } finally {
+    setLoading(false);
+    setBusyLabel("");
   }
+  }
+
 
   async function runExplain() {
     if (!hasSession) {
@@ -264,6 +278,7 @@ export default function App() {
     }
   }
 
+
   async function saveFeedback() {
     if (!hasSession) {
       openAlert("User ID Required", "Enter a User ID before saving feedback.");
@@ -291,6 +306,15 @@ export default function App() {
       });
       await loadPreferences();
       await loadAnalytics();
+      // Refresh explanation after feedback so the UI reflects disputed features/preferences
+      if (activeCaseId) {
+        try {
+          const exp = await explainPatient(patient, userId, activeCaseId);
+          setExplainOut(exp);
+        } catch (explainErr) {
+          setError(String(explainErr.message || explainErr));
+        }
+      }
       setNotice(`Feedback saved${activeCaseId ? ` for case ${activeCaseId}` : ""} and profile refreshed.`);
     } catch (e) {
       setError(e.message);
