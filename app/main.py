@@ -38,6 +38,7 @@ _origin_regex = os.environ.get("CORS_ORIGIN_REGEX", "").strip()
 _default_origins = [
     "http://localhost:5173",
     "http://127.0.0.1:5173",
+    "https://interactive-x-ai-test.vercel.app",
 ]
 env_origins = [o.strip() for o in _origins_env.split(",") if o.strip()]
 _cors_origins = sorted(set(_default_origins + env_origins))

@@ -67,6 +67,21 @@ def test_home_endpoint(client):
     assert "/model/info" in body["endpoints"]
 
 
+def test_cors_allows_production_frontend_origin(client):
+    resp = client.options(
+        "/predict?user_id=test_user",
+        headers={
+            "Origin": "https://interactive-x-ai-test.vercel.app",
+            "Access-Control-Request-Method": "POST",
+        },
+    )
+    assert resp.status_code == 200
+    assert (
+        resp.headers.get("access-control-allow-origin")
+        == "https://interactive-x-ai-test.vercel.app"
+    )
+
+
 def test_predict_endpoint(client):
     resp = client.post("/predict?user_id=test_user", json=sample_patient())
     assert resp.status_code == 200
